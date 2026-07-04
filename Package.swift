@@ -27,8 +27,11 @@ let package = Package(
         ),
         // Interior trim: SwiftUI panels. Depends on TreeCore protocols only.
         .target(name: "TreeUI", dependencies: ["TreeCore"]),
+        // AppKit adapter: real NSPasteboard source + polling driver. The only
+        // place NSPasteboard is touched — thin, manually verified (design §6.5).
+        .target(name: "TreeCapture", dependencies: ["TreeCore"]),
         // Assembly: menu bar bootstrap, permission flow, wiring. Kept thin.
-        .executableTarget(name: "TreeApp", dependencies: ["TreeCore", "TreeUI"]),
+        .executableTarget(name: "TreeApp", dependencies: ["TreeCore", "TreeUI", "TreeCapture"]),
 
         .testTarget(name: "TreeCoreTests", dependencies: ["TreeCore"]),
         .testTarget(name: "TreeUITests", dependencies: ["TreeUI"]),
