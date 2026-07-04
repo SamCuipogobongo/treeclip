@@ -31,11 +31,26 @@ public actor Store {
         }
     }
 
+    /// Retention policy. Both axes exempt pinned items (design §3.4).
+    public struct Config: Sendable {
+        /// Count cap on live non-pinned items; the oldest beyond this are
+        /// tombstoned synchronously on the write path (Flycut discipline).
+        public var maxItems: Int
+        /// Age cap in days on `lastPastedAt` (not creation); nil disables expiry.
+        public var maxAgeDays: Int?
+        public init(maxItems: Int = 1000, maxAgeDays: Int? = 90) {
+            self.maxItems = maxItems
+            self.maxAgeDays = maxAgeDays
+        }
+    }
+
     let pool: DatabasePool
     let location: Location
+    let config: Config
 
-    public init(location: Location) throws {
+    public init(location: Location, config: Config = Config()) throws {
         self.location = location
+        self.config = config
 
         let fm = FileManager.default
         try fm.createDirectory(
@@ -52,13 +67,13 @@ public actor Store {
     }
 
     /// Test/ephemeral store backed by a temp directory.
-    public static func temporary() throws -> Store {
+    public static func temporary(config: Config = Config()) throws -> Store {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("treeclip-\(UUID().uuidString)", isDirectory: true)
         return try Store(location: Location(
             databasePath: dir.appendingPathComponent("Store.sqlite").path,
             payloadsDirectory: dir.appendingPathComponent("payloads", isDirectory: true)
-        ))
+        ), config: config)
     }
 
     /// Live (non-tombstoned) item count. Small helper used by tests and caps.

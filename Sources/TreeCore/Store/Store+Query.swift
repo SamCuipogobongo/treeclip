@@ -23,4 +23,14 @@ extension Store {
     public func payloadURL(relativePath: String) -> URL {
         location.payloadsDirectory.appendingPathComponent(relativePath)
     }
+
+    /// Pin/unpin an item. Pinned items are exempt from both cap axes (§3.4).
+    public func setPinned(id: String, pinned: Bool, nowMillis: Int64) throws {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE item SET pinned = ?, updatedAt = ? WHERE id = ?",
+                arguments: [pinned, nowMillis, id]
+            )
+        }
+    }
 }

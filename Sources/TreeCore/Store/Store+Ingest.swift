@@ -94,6 +94,8 @@ extension Store {
                 sql: "INSERT INTO item_fts(item_id, title, ocr_text) VALUES (?, ?, ?)",
                 arguments: [id, captured.title, captured.ocrText ?? ""]
             )
+            // Flycut discipline: trim over-cap history synchronously, same txn.
+            try CapEnforcer.enforceCountCap(db, maxItems: config.maxItems, nowMillis: nowMillis)
         }
         return id
     }
