@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+Package.resolved.bak
+
+# treeclip runtime data (never commit real clipboard data / handoff files)
+/handoff/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
