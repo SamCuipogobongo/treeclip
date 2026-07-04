@@ -12,6 +12,7 @@ public final class CaptureDriver {
     private let coordinator: CaptureCoordinator
     private let store: Store
     private let interval: TimeInterval
+    private let ownership: PasteboardOwnership?
     private var lastChangeCount: Int
     private var timer: Timer?
 
@@ -23,11 +24,13 @@ public final class CaptureDriver {
         store: Store,
         source: PasteboardSource = SystemPasteboardSource(),
         coordinator: CaptureCoordinator = CaptureCoordinator(),
+        ownership: PasteboardOwnership? = nil,
         interval: TimeInterval = 0.5
     ) {
         self.store = store
         self.source = source
         self.coordinator = coordinator
+        self.ownership = ownership
         self.interval = interval
         self.lastChangeCount = source.changeCount
     }
@@ -48,6 +51,7 @@ public final class CaptureDriver {
         let cc = source.changeCount
         guard cc != lastChangeCount else { return }
         lastChangeCount = cc
+        if let ownership, ownership.isOwned(cc) { return }   // our own paste, don't re-capture
         guard let snapshot = source.snapshot(),
               let item = coordinator.process(snapshot) else { return }
 

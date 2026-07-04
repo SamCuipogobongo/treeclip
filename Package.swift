@@ -35,6 +35,7 @@ let package = Package(
 
         .testTarget(name: "TreeCoreTests", dependencies: ["TreeCore"]),
         .testTarget(name: "TreeUITests", dependencies: ["TreeUI", "TreeCore"]),
+        .testTarget(name: "TreeCaptureTests", dependencies: ["TreeCapture", "TreeCore"]),
         // Quality gate: memory benchmarks become CI-required in M3.
         .testTarget(name: "TreeBenchmarks", dependencies: ["TreeCore"]),
     ]

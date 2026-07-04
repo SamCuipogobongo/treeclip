@@ -16,7 +16,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var driver: CaptureDriver!
     private var panel: PalettePanel!
     private var hotKeyMonitor: Any?
-    private let writer = ClipboardWriter()
+    private var pasteEngine: PasteEngine!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -25,8 +25,18 @@ final class AppController: NSObject, NSApplicationDelegate {
             NSApp.presentError(error); NSApp.terminate(nil); return
         }
 
-        driver = CaptureDriver(store: store)
+        let ownership = PasteboardOwnership()
+        driver = CaptureDriver(store: store, ownership: ownership)
         driver.start()
+
+        let handoffDir = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("treeclip/handoff", isDirectory: true)
+        pasteEngine = PasteEngine(
+            store: store,
+            handoff: HandoffStore(directory: handoffDir),
+            ownership: ownership
+        )
 
         let model = PaletteViewModel(store: store)
         panel = PalettePanel(model: model)
@@ -59,14 +69,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func togglePalette() { panel.toggle() }
 
     private func commit(_ row: ListRow) {
-        let store = self.store!
-        let writer = self.writer
+        let forceRaw = NSEvent.modifierFlags.contains(.option)   // ⌥+Enter = paste raw
+        let engine = self.pasteEngine!
         let panel = self.panel!
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        panel.orderOut(nil)                                       // close first so ⌘V targets the prior app
         Task { @MainActor in
-            if let contents = try? await store.loadContent(itemId: row.id) {
-                writer.restore(contents)
-            }
-            panel.orderOut(nil)
+            await engine.paste(row: row, forceRaw: forceRaw, nowMillis: now)
         }
     }
 }
