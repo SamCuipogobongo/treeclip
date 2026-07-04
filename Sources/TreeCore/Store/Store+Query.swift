@@ -24,6 +24,20 @@ extension Store {
         location.payloadsDirectory.appendingPathComponent(relativePath)
     }
 
+    /// Materialize an item's full content for the paste/restore path — the one
+    /// place we deliberately read payloads (inline bytes or offloaded file) back
+    /// into memory, on explicit user action, not during browsing.
+    public func loadContent(itemId: String) throws -> [(uti: String, bytes: Data)] {
+        try contentRows(itemId: itemId).compactMap { row in
+            if let inline = row.data { return (row.uti, inline) }
+            if let path = row.filePath,
+               let bytes = try? Data(contentsOf: payloadURL(relativePath: path)) {
+                return (row.uti, bytes)
+            }
+            return nil
+        }
+    }
+
     /// Pin/unpin an item. Pinned items are exempt from both cap axes (§3.4).
     public func setPinned(id: String, pinned: Bool, nowMillis: Int64) throws {
         try pool.write { db in
