@@ -17,6 +17,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var panel: PalettePanel!
     private var hotKeyMonitor: Any?
     private var pasteEngine: PasteEngine!
+    private var notes: NotesController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -38,9 +39,20 @@ final class AppController: NSObject, NSApplicationDelegate {
             ownership: ownership
         )
 
+        notes = NotesController(store: store, pasteEngine: pasteEngine)
+        Task { await notes.restore() }
+
+        // Enable truly-automatic paste: synthesizing ⌘V needs Accessibility.
+        // This pops the one-time grant prompt; until granted, paste falls back
+        // to leaving content on the clipboard for a manual ⌘V.
+        AccessibilityAuthorizer.requestIfNeeded()
+
         let model = PaletteViewModel(store: store)
         panel = PalettePanel(model: model)
         panel.onCommit = { [weak self] row in self?.commit(row) }
+        panel.onPromote = { [weak self] row in
+            Task { @MainActor in await self?.notes.promote(itemId: row.id) }
+        }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "tree", accessibilityDescription: "treeclip")
@@ -49,10 +61,15 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         // ⌘⇧V summon. Global monitor is non-consuming (a v1 tradeoff; a consuming
         // hotkey is an M7 refinement — design §4 flags the Carbon question).
+        // ⌘⇧V summon palette · ⌘⇧N new note. Global monitor is non-consuming
+        // (a v1 tradeoff; a consuming hotkey is an M7 refinement — design §4).
         hotKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift],
-               event.charactersIgnoringModifiers?.lowercased() == "v" {
-                Task { @MainActor in self?.panel.toggle() }
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift]
+            else { return }
+            switch event.charactersIgnoringModifiers?.lowercased() {
+            case "v": Task { @MainActor in self?.panel.toggle() }
+            case "n": Task { @MainActor in await self?.notes.newNote() }
+            default: break
             }
         }
 

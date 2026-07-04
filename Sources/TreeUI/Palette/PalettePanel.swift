@@ -9,6 +9,7 @@ import TreeCore
 public final class PalettePanel: NSPanel {
     private let model: PaletteViewModel
     public var onCommit: ((ListRow) -> Void)?
+    public var onPromote: ((ListRow) -> Void)?
 
     public init(model: PaletteViewModel) {
         self.model = model
@@ -31,7 +32,8 @@ public final class PalettePanel: NSPanel {
         let root = PaletteView(
             model: model,
             onCommit: { [weak self] row in self?.onCommit?(row) },
-            onEscape: { [weak self] in self?.orderOut(nil) }
+            onEscape: { [weak self] in self?.orderOut(nil) },
+            onPromote: { [weak self] row in self?.orderOut(nil); self?.onPromote?(row) }
         )
         contentView = NSHostingView(rootView: root)
     }

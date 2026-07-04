@@ -64,6 +64,29 @@ public final class PasteEngine {
         return plan
     }
 
+    /// Paste arbitrary text (a note body) through the same routing — short text
+    /// pastes inline, long text hands off as `@file` in a terminal.
+    @discardableResult
+    public func pasteText(_ text: String, forceRaw: Bool, nowMillis: Int64) async -> PastePlan {
+        let plan = AgentRouter.plan(
+            frontApp: frontAppProvider(), kind: "text", text: text,
+            forceRaw: forceRaw, config: config
+        )
+        switch plan {
+        case .raw:
+            writer.restore([(uti: "public.utf8-plain-text", bytes: Data(text.utf8))])
+        case .handoffFile(_, let ext):
+            if let url = try? handoff.write(bytes: Data(text.utf8), ext: ext, nowMillis: nowMillis) {
+                writer.restore([(uti: "public.utf8-plain-text", bytes: Data("@\(url.path) ".utf8))])
+            } else {
+                writer.restore([(uti: "public.utf8-plain-text", bytes: Data(text.utf8))])
+            }
+        }
+        ownership.markOwned(NSPasteboard.general.changeCount)
+        if synthesizesPaste { Self.synthesizeCmdV() }
+        return plan
+    }
+
     private func handoffPayload(kind: String, text: String?, contents: [(uti: String, bytes: Data)]) -> Data {
         if kind == "image" {
             return contents.first { $0.uti.contains("png") || $0.uti.contains("image") }?.bytes

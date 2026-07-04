@@ -11,15 +11,18 @@ public struct PaletteView: View {
     /// actual restore/paste (M5) and closes the panel.
     var onCommit: (ListRow) -> Void
     var onEscape: () -> Void
+    var onPromote: (ListRow) -> Void
 
     @FocusState private var searchFocused: Bool
 
     public init(model: PaletteViewModel,
                 onCommit: @escaping (ListRow) -> Void,
-                onEscape: @escaping () -> Void) {
+                onEscape: @escaping () -> Void,
+                onPromote: @escaping (ListRow) -> Void = { _ in }) {
         self.model = model
         self.onCommit = onCommit
         self.onEscape = onEscape
+        self.onPromote = onPromote
     }
 
     public var body: some View {
@@ -47,6 +50,17 @@ public struct PaletteView: View {
                 return .handled
             }
             .onKeyPress(.escape) { onEscape(); return .handled }
+            .background(promoteShortcut)                      // ⌘N: promote selection to a note
+    }
+
+    // A hidden ⌘N shortcut. Command-modified shortcuts fire even while the
+    // search field is focused, and don't interfere with typing a plain "n".
+    private var promoteShortcut: some View {
+        Button("") { if let row = model.selectedRow { onPromote(row) } }
+            .keyboardShortcut("n", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
     }
 
     private var list: some View {
