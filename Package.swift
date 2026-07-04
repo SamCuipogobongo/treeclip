@@ -14,9 +14,17 @@ let package = Package(
         .library(name: "TreeUI", targets: ["TreeUI"]),
         .executable(name: "treeclip", targets: ["TreeApp"]),
     ],
+    dependencies: [
+        // Storage engine. DatabasePool gives WAL + reader/writer separation
+        // natively (design §3.3). Pinned to the 7.x major.
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+    ],
     targets: [
         // Engine: storage / capture / paste routing / models. No UI imports.
-        .target(name: "TreeCore"),
+        .target(
+            name: "TreeCore",
+            dependencies: [.product(name: "GRDB", package: "GRDB.swift")]
+        ),
         // Interior trim: SwiftUI panels. Depends on TreeCore protocols only.
         .target(name: "TreeUI", dependencies: ["TreeCore"]),
         // Assembly: menu bar bootstrap, permission flow, wiring. Kept thin.
