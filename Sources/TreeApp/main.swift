@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Carbon.HIToolbox
 import TreeCore
 import TreeUI
 import TreeCapture
@@ -15,7 +16,6 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var store: Store!
     private var driver: CaptureDriver!
     private var panel: PalettePanel!
-    private var hotKeyMonitor: Any?
     private var pasteEngine: PasteEngine!
     private var notes: NotesController!
 
@@ -61,26 +61,16 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         // ⌘⇧V summon. Global monitor is non-consuming (a v1 tradeoff; a consuming
         // hotkey is an M7 refinement — design §4 flags the Carbon question).
-        // ⌘⇧V summon palette · ⌘⇧N new note. Global monitor is non-consuming
-        // (a v1 tradeoff; a consuming hotkey is an M7 refinement — design §4).
-        hotKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift]
-            else { return }
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "v": Task { @MainActor in self?.panel.toggle() }
-            case "n": Task { @MainActor in await self?.notes.newNote() }
-            default: break
-            }
+        // ⌥= summon palette · ⌘⇧N new note. Carbon hotkeys: permission-free and
+        // consuming (an NSEvent global monitor needs Accessibility and leaks the
+        // key to the frontmost app).
+        HotKeyCenter.shared.register(keyCode: UInt32(kVK_ANSI_Equal), modifiers: UInt32(optionKey)) { [weak self] in
+            self?.panel.toggle()
+        }
+        HotKeyCenter.shared.register(keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(cmdKey | shiftKey)) { [weak self] in
+            Task { @MainActor in await self?.notes.newNote() }
         }
 
-        // Verification-only: auto-summon the palette so it can be screenshotted
-        // headlessly. Guarded by an env var; a no-op in normal use.
-        if ProcessInfo.processInfo.environment["TREE_AUTO_PRESENT"] != nil {
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
-                await self.panel.present()
-            }
-        }
     }
 
     @objc private func togglePalette() { panel.toggle() }

@@ -10,3 +10,4 @@ Package.resolved.bak
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+build/
