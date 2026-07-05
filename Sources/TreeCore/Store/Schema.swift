@@ -78,6 +78,14 @@ enum Schema {
             }
         }
 
+        // v2: content category (link/code/color/plain for text; image/file for
+        // the rest) computed at ingest — drives palette type icons + filtering.
+        migrator.registerMigration("v2") { db in
+            try db.alter(table: "item") { t in
+                t.add(column: "category", .text)
+            }
+        }
+
         return migrator
     }
 }

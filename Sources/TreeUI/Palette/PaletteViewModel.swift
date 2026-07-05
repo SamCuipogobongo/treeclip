@@ -11,6 +11,8 @@ public final class PaletteViewModel {
     private let store: Store
     public private(set) var rows: [ListRow] = []
     public var query: String = ""
+    /// nil = all types; otherwise link/code/color/plain/image/file.
+    public private(set) var categoryFilter: String?
     public private(set) var selectedIndex: Int = 0
 
     /// Max rows fetched per view (first screen + a buffer; the store pages).
@@ -23,12 +25,18 @@ public final class PaletteViewModel {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let result: [ListRow]
         if q.isEmpty {
-            result = (try? await store.listItems(limit: pageLimit)) ?? []
+            result = (try? await store.listItems(limit: pageLimit, category: categoryFilter)) ?? []
         } else {
-            result = (try? await store.search(q, limit: pageLimit)) ?? []
+            result = (try? await store.search(q, limit: pageLimit, category: categoryFilter)) ?? []
         }
         rows = result
         clampSelection()
+    }
+
+    /// Set the type filter (nil = all) and reload.
+    public func setCategoryFilter(_ category: String?) async {
+        categoryFilter = category
+        await reload()
     }
 
     public func moveDown() { if selectedIndex < rows.count - 1 { selectedIndex += 1 } }

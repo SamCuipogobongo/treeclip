@@ -11,6 +11,7 @@ public final class PalettePanel: NSPanel {
     public var onCommit: ((ListRow, CommitIntent) -> Void)?
     public var onPromote: ((ListRow) -> Void)?
     public var onDelete: ((ListRow) -> Void)?
+    public var onTogglePin: ((ListRow) -> Void)?
 
     public init(model: PaletteViewModel) {
         self.model = model
@@ -35,7 +36,8 @@ public final class PalettePanel: NSPanel {
             onCommit: { [weak self] row, intent in self?.onCommit?(row, intent) },
             onEscape: { [weak self] in self?.orderOut(nil) },
             onPromote: { [weak self] row in self?.orderOut(nil); self?.onPromote?(row) },
-            onDelete: { [weak self] row in self?.onDelete?(row) }
+            onDelete: { [weak self] row in self?.onDelete?(row) },
+            onTogglePin: { [weak self] row in self?.onTogglePin?(row) }
         )
         contentView = NSHostingView(rootView: root)
     }

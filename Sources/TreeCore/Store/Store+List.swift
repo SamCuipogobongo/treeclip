@@ -12,45 +12,52 @@ public struct ListRow: Sendable, Identifiable {
     public var pinned: Bool
     public var lastPastedAt: Int64
     public var thumb: Data?
+    public var category: String?
 }
 
 extension Store {
-    private static let listSQL = """
-        SELECT i.id, i.kind, i.title, i.pinned, i.lastPastedAt, t.data AS thumb
-        FROM item i
-        LEFT JOIN thumb t ON t.itemId = i.id
-        WHERE i.deletedAt IS NULL
-        ORDER BY i.pinned DESC, i.lastPastedAt DESC
-        LIMIT ? OFFSET ?
-        """
-
     /// Paginated history for the palette. `content.data` is never touched.
-    public func listItems(limit: Int, offset: Int = 0) throws -> [ListRow] {
+    /// `category` filters to one type (link/code/color/plain/image/file).
+    public func listItems(limit: Int, offset: Int = 0, category: String? = nil) throws -> [ListRow] {
         try pool.read { db in
-            try Row.fetchAll(db, sql: Self.listSQL, arguments: [limit, offset]).map(Self.listRow)
+            let filter = category != nil ? "AND i.category = ?" : ""
+            let sql = """
+                SELECT i.id, i.kind, i.title, i.pinned, i.lastPastedAt, i.category, t.data AS thumb
+                FROM item i
+                LEFT JOIN thumb t ON t.itemId = i.id
+                WHERE i.deletedAt IS NULL \(filter)
+                ORDER BY i.pinned DESC, i.lastPastedAt DESC
+                LIMIT ? OFFSET ?
+                """
+            let args: StatementArguments = category != nil ? [category, limit, offset] : [limit, offset]
+            return try Row.fetchAll(db, sql: sql, arguments: args).map(Self.listRow)
         }
     }
 
     /// FTS search over title + OCR text, newest-first among matches.
-    public func search(_ query: String, limit: Int) throws -> [ListRow] {
+    public func search(_ query: String, limit: Int, category: String? = nil) throws -> [ListRow] {
         guard let pattern = FTS5Pattern(matchingAllTokensIn: query) else { return [] }
         return try pool.read { db in
-            try Row.fetchAll(db, sql: """
-                SELECT i.id, i.kind, i.title, i.pinned, i.lastPastedAt, t.data AS thumb
+            let filter = category != nil ? "AND i.category = ?" : ""
+            let sql = """
+                SELECT i.id, i.kind, i.title, i.pinned, i.lastPastedAt, i.category, t.data AS thumb
                 FROM item_fts f
                 JOIN item i ON i.id = f.item_id
                 LEFT JOIN thumb t ON t.itemId = i.id
-                WHERE f.item_fts MATCH ? AND i.deletedAt IS NULL
+                WHERE f.item_fts MATCH ? AND i.deletedAt IS NULL \(filter)
                 ORDER BY i.lastPastedAt DESC
                 LIMIT ?
-                """, arguments: [pattern, limit]).map(Self.listRow)
+                """
+            let args: StatementArguments = category != nil ? [pattern, category, limit] : [pattern, limit]
+            return try Row.fetchAll(db, sql: sql, arguments: args).map(Self.listRow)
         }
     }
 
     private static func listRow(_ row: Row) -> ListRow {
         ListRow(
             id: row["id"], kind: row["kind"], title: row["title"],
-            pinned: row["pinned"], lastPastedAt: row["lastPastedAt"], thumb: row["thumb"]
+            pinned: row["pinned"], lastPastedAt: row["lastPastedAt"],
+            thumb: row["thumb"], category: row["category"]
         )
     }
 }

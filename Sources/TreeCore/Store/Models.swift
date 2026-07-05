@@ -20,18 +20,19 @@ public struct Item: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     public var pinned: Bool
     public var deletedAt: Int64?            // tombstone; GC hard-deletes later
     public var updatedAt: Int64
+    public var category: String?            // link/code/color/plain/image/file (v2)
 
     public init(
         id: String, kind: String, title: String, contentHash: String,
         sourceApp: String? = nil, firstCopiedAt: Int64, lastPastedAt: Int64,
         pasteCount: Int = 0, pinned: Bool = false, deletedAt: Int64? = nil,
-        updatedAt: Int64
+        updatedAt: Int64, category: String? = nil
     ) {
         self.id = id; self.kind = kind; self.title = title
         self.contentHash = contentHash; self.sourceApp = sourceApp
         self.firstCopiedAt = firstCopiedAt; self.lastPastedAt = lastPastedAt
         self.pasteCount = pasteCount; self.pinned = pinned
-        self.deletedAt = deletedAt; self.updatedAt = updatedAt
+        self.deletedAt = deletedAt; self.updatedAt = updatedAt; self.category = category
     }
 }
 

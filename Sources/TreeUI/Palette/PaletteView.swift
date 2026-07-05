@@ -23,6 +23,7 @@ public struct PaletteView: View {
     var onEscape: () -> Void
     var onPromote: (ListRow) -> Void
     var onDelete: (ListRow) -> Void
+    var onTogglePin: (ListRow) -> Void
 
     @FocusState private var searchFocused: Bool
 
@@ -30,23 +31,46 @@ public struct PaletteView: View {
                 onCommit: @escaping (ListRow, CommitIntent) -> Void,
                 onEscape: @escaping () -> Void,
                 onPromote: @escaping (ListRow) -> Void = { _ in },
-                onDelete: @escaping (ListRow) -> Void = { _ in }) {
+                onDelete: @escaping (ListRow) -> Void = { _ in },
+                onTogglePin: @escaping (ListRow) -> Void = { _ in }) {
         self.model = model
         self.onCommit = onCommit
         self.onEscape = onEscape
         self.onPromote = onPromote
         self.onDelete = onDelete
+        self.onTogglePin = onTogglePin
     }
 
     public var body: some View {
         VStack(spacing: 0) {
             searchField
+            filterBar
             Divider()
             list
         }
         .frame(width: 640, height: 420)
         .background(.ultraThinMaterial)
         .onAppear { searchFocused = true }
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 6) {
+            chip("All", nil); chip("Text", "plain"); chip("Link", "link")
+            chip("Code", "code"); chip("Color", "color"); chip("Image", "image")
+            Spacer()
+        }
+        .padding(.horizontal, 10).padding(.bottom, 6)
+    }
+
+    private func chip(_ label: String, _ cat: String?) -> some View {
+        let active = model.categoryFilter == cat
+        return Text(label)
+            .font(.system(size: 11))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(active ? Color.accentColor.opacity(0.28) : Color.secondary.opacity(0.12))
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+            .onTapGesture { Task { await model.setCategoryFilter(cat) } }
     }
 
     private var searchField: some View {
@@ -77,6 +101,8 @@ public struct PaletteView: View {
                 .keyboardShortcut(.return, modifiers: .command)       // ⌘Enter copy only
             Button("") { if let r = model.selectedRow { onDelete(r) } }
                 .keyboardShortcut(.delete, modifiers: .command)       // ⌘⌫ delete item
+            Button("") { if let r = model.selectedRow { onTogglePin(r) } }
+                .keyboardShortcut("p", modifiers: .command)          // ⌘P pin/unpin
             ForEach(1...9, id: \.self) { n in                          // ⌘1-9 quick paste
                 Button("") {
                     if model.rows.indices.contains(n - 1) { onCommit(model.rows[n - 1], .paste) }
@@ -130,13 +156,16 @@ struct PaletteRowView: View {
             Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
                 .frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 4))
         } else {
-            Image(systemName: icon(for: row.kind)).frame(width: 28, height: 28)
+            Image(systemName: icon(for: row.category ?? row.kind)).frame(width: 28, height: 28)
                 .foregroundStyle(.secondary)
         }
     }
 
-    private func icon(for kind: String) -> String {
-        switch kind {
+    private func icon(for category: String) -> String {
+        switch category {
+        case "link": "link"
+        case "code": "chevron.left.forwardslash.chevron.right"
+        case "color": "paintpalette"
         case "image": "photo"
         case "file": "doc"
         default: "text.alignleft"

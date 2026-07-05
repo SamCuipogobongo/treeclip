@@ -24,15 +24,18 @@ public struct CapturedItem: Sendable {
     public var representations: [Representation]
     public var thumbnail: (data: Data, w: Int, h: Int)?
     public var ocrText: String?
+    /// Optional explicit category; when nil, ingest classifies from content.
+    public var category: String?
 
     public init(
         kind: String, title: String, contentHash: String, sourceApp: String? = nil,
         representations: [Representation],
-        thumbnail: (data: Data, w: Int, h: Int)? = nil, ocrText: String? = nil
+        thumbnail: (data: Data, w: Int, h: Int)? = nil, ocrText: String? = nil,
+        category: String? = nil
     ) {
         self.kind = kind; self.title = title; self.contentHash = contentHash
         self.sourceApp = sourceApp; self.representations = representations
-        self.thumbnail = thumbnail; self.ocrText = ocrText
+        self.thumbnail = thumbnail; self.ocrText = ocrText; self.category = category
     }
 }
 
@@ -77,12 +80,19 @@ extension Store {
             }
         }
 
+        let plainText = captured.representations
+            .first { $0.uti == "public.utf8-plain-text" }
+            .map { String(decoding: $0.bytes, as: UTF8.self) }
+        let category = captured.category
+            ?? ContentClassifier.classify(kind: captured.kind, text: plainText).rawValue
+
         try pool.write { db in
             var item = Item(
                 id: id, kind: captured.kind, title: captured.title,
                 contentHash: captured.contentHash, sourceApp: captured.sourceApp,
                 firstCopiedAt: nowMillis, lastPastedAt: nowMillis,
-                pasteCount: 1, pinned: false, deletedAt: nil, updatedAt: nowMillis
+                pasteCount: 1, pinned: false, deletedAt: nil, updatedAt: nowMillis,
+                category: category
             )
             try item.insert(db)
             for var row in rows { try row.insert(db) }

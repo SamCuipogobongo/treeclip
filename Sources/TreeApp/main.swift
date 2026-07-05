@@ -55,6 +55,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             Task { @MainActor in await self?.notes.promote(itemId: row.id) }
         }
         panel.onDelete = { [weak self] row in self?.deleteItem(row) }
+        panel.onTogglePin = { [weak self] row in self?.togglePin(row) }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "tree", accessibilityDescription: "treeclip")
@@ -125,6 +126,14 @@ final class AppController: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             try? await store.softDelete(id: row.id, nowMillis: nowMillis())
             await panel.reloadList()                              // refresh in place, keep palette open
+        }
+    }
+
+    private func togglePin(_ row: ListRow) {
+        let store = store!, panel = panel!
+        Task { @MainActor in
+            try? await store.setPinned(id: row.id, pinned: !row.pinned, nowMillis: nowMillis())
+            await panel.reloadList()
         }
     }
 }
