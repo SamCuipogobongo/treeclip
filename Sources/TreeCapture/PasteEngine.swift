@@ -7,6 +7,19 @@ import TreeCore
 /// ⌘V into the frontmost app. The routing decision (AgentRouter) and the file
 /// write (HandoffStore) are UI-free and unit-tested; this class is the thin
 /// AppKit glue around them (design §5, §6.5).
+/// Modifiers on a commit. Composable: e.g. plainText+copyOnly is "strip
+/// formatting and just put it on the clipboard".
+public struct PasteOptions: OptionSet, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+    /// ⌥ — paste the content as-is, never route to an `@file` handoff.
+    public static let forceRaw = PasteOptions(rawValue: 1 << 0)
+    /// ⇧ — strip rich formatting, paste only the plain-text representation.
+    public static let plainText = PasteOptions(rawValue: 1 << 1)
+    /// ⌘ — put the content on the clipboard but don't synthesize ⌘V.
+    public static let copyOnly = PasteOptions(rawValue: 1 << 2)
+}
+
 @MainActor
 public final class PasteEngine {
     private let store: Store
@@ -37,14 +50,26 @@ public final class PasteEngine {
 
     /// Restore/handoff the item and paste it. Returns the chosen plan (for logs).
     @discardableResult
-    public func paste(row: ListRow, forceRaw: Bool, nowMillis: Int64) async -> PastePlan {
-        let contents = (try? await store.loadContent(itemId: row.id)) ?? []
+    public func paste(row: ListRow, options: PasteOptions, nowMillis: Int64) async -> PastePlan {
+        var contents = (try? await store.loadContent(itemId: row.id)) ?? []
+        if options.contains(.plainText) {
+            let plain = contents.filter { $0.uti == "public.utf8-plain-text" }
+            if !plain.isEmpty { contents = plain }        // fall back to all if no plain rep (e.g. image)
+        }
         let text = contents
             .first { $0.uti == "public.utf8-plain-text" }
             .map { String(decoding: $0.bytes, as: UTF8.self) }
+
+        // Copy-only: put the real content on the clipboard, no routing, no ⌘V.
+        if options.contains(.copyOnly) {
+            writer.restore(contents)
+            ownership.markOwned(NSPasteboard.general.changeCount)
+            return .raw
+        }
+
         let plan = AgentRouter.plan(
             frontApp: frontAppProvider(), kind: row.kind, text: text,
-            forceRaw: forceRaw, config: config
+            forceRaw: options.contains(.forceRaw), config: config
         )
 
         switch plan {

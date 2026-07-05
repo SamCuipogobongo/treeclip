@@ -9,12 +9,21 @@ public enum FilterDecision: Equatable, Sendable {
 public struct FilterConfig: Sendable {
     /// Bundle ids whose copies are never captured (e.g. password managers).
     public var ignoredApps: Set<String>
+    /// Pasteboard UTIs whose presence suppresses capture — the robust way to
+    /// respect password/snippet managers that stamp their own type (1Password,
+    /// KeeWeb, TypeIt4Me…), beyond the org.nspasteboard.* flags.
+    public var ignoredTypes: Set<String>
+    /// If set and the plain text matches, the snapshot is ignored (user regex).
+    public var ignoreRegex: String?
     /// Drop empty snapshots. Deliberately no *upper* bound — long text is the
     /// whole point (agent @file channel), unlike PasteBar's 5000-char cutoff.
     public var minBytes: Int
 
-    public init(ignoredApps: Set<String> = [], minBytes: Int = 1) {
+    public init(ignoredApps: Set<String> = [], ignoredTypes: Set<String> = [],
+                ignoreRegex: String? = nil, minBytes: Int = 1) {
         self.ignoredApps = ignoredApps
+        self.ignoredTypes = ignoredTypes
+        self.ignoreRegex = ignoreRegex
         self.minBytes = minBytes
     }
 }
@@ -23,7 +32,8 @@ public struct FilterConfig: Sendable {
 /// treeclip must never persist a password even transiently.
 public enum FilterChain {
     public static func decide(
-        flags: CaptureFlags, sourceApp: String?, totalBytes: Int, config: FilterConfig
+        flags: CaptureFlags, sourceApp: String?, presentUTIs: Set<String>,
+        text: String?, totalBytes: Int, config: FilterConfig
     ) -> FilterDecision {
         if flags.contains(.concealed) { return .ignore(reason: "concealed") }
         if flags.contains(.transient) { return .ignore(reason: "transient") }
@@ -31,7 +41,18 @@ public enum FilterChain {
         if let app = sourceApp, config.ignoredApps.contains(app) {
             return .ignore(reason: "ignoredApp:\(app)")
         }
+        if !config.ignoredTypes.isDisjoint(with: presentUTIs) {
+            return .ignore(reason: "ignoredType")
+        }
+        if let pattern = config.ignoreRegex, let text, matchesRegex(text, pattern) {
+            return .ignore(reason: "regex")
+        }
         if totalBytes < config.minBytes { return .ignore(reason: "empty") }
         return .capture
+    }
+
+    static func matchesRegex(_ text: String, _ pattern: String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return false }
+        return re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 }

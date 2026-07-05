@@ -35,8 +35,13 @@ public struct CaptureCoordinator: Sendable {
 
     public func process(_ snapshot: RawSnapshot) -> CapturedItem? {
         let totalBytes = snapshot.representations.reduce(0) { $0 + $1.bytes.count }
+        let presentUTIs = Set(snapshot.representations.map(\.uti))
+        let filterText = snapshot.representations
+            .first { $0.uti == "public.utf8-plain-text" }
+            .map { String(decoding: $0.bytes, as: UTF8.self) }
         guard case .capture = FilterChain.decide(
             flags: snapshot.flags, sourceApp: snapshot.sourceApp,
+            presentUTIs: presentUTIs, text: filterText,
             totalBytes: totalBytes, config: filterConfig
         ) else { return nil }
 

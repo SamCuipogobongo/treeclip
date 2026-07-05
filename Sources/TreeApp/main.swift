@@ -18,6 +18,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var panel: PalettePanel!
     private var pasteEngine: PasteEngine!
     private var notes: NotesController!
+    private var paletteModel: PaletteViewModel!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -47,17 +48,17 @@ final class AppController: NSObject, NSApplicationDelegate {
         // to leaving content on the clipboard for a manual ⌘V.
         AccessibilityAuthorizer.requestIfNeeded()
 
-        let model = PaletteViewModel(store: store)
-        panel = PalettePanel(model: model)
-        panel.onCommit = { [weak self] row in self?.commit(row) }
+        paletteModel = PaletteViewModel(store: store)
+        panel = PalettePanel(model: paletteModel)
+        panel.onCommit = { [weak self] row, intent in self?.commit(row, intent) }
         panel.onPromote = { [weak self] row in
             Task { @MainActor in await self?.notes.promote(itemId: row.id) }
         }
+        panel.onDelete = { [weak self] row in self?.deleteItem(row) }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "tree", accessibilityDescription: "treeclip")
-        statusItem.button?.action = #selector(togglePalette)
-        statusItem.button?.target = self
+        statusItem.menu = buildMenu()
 
         // ⌘⇧V summon. Global monitor is non-consuming (a v1 tradeoff; a consuming
         // hotkey is an M7 refinement — design §4 flags the Carbon question).
@@ -74,15 +75,56 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePalette() { panel.toggle() }
+    @objc private func clearHistory() { performClear(keepPinned: true) }
+    @objc private func clearAll() { performClear(keepPinned: false) }
+    @objc private func quit() { NSApp.terminate(nil) }
 
-    private func commit(_ row: ListRow) {
-        let forceRaw = NSEvent.modifierFlags.contains(.option)   // ⌥+Enter = paste raw
-        let engine = self.pasteEngine!
-        let panel = self.panel!
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        panel.orderOut(nil)                                       // close first so ⌘V targets the prior app
+    private func buildMenu() -> NSMenu {
+        let menu = NSMenu()
+        let open = NSMenuItem(title: "Open Tree", action: #selector(togglePalette), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
+        menu.addItem(.separator())
+        let clear = NSMenuItem(title: "Clear History (keep pinned)", action: #selector(clearHistory), keyEquivalent: "")
+        clear.target = self
+        menu.addItem(clear)
+        let clearAllItem = NSMenuItem(title: "Clear All", action: #selector(clearAll), keyEquivalent: "")
+        clearAllItem.target = self
+        menu.addItem(clearAllItem)
+        menu.addItem(.separator())
+        let quitItem = NSMenuItem(title: "Quit Tree", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+        return menu
+    }
+
+    private func performClear(keepPinned: Bool) {
+        let store = store!, panel = panel!
         Task { @MainActor in
-            await engine.paste(row: row, forceRaw: forceRaw, nowMillis: now)
+            try? await store.clear(keepPinned: keepPinned, nowMillis: nowMillis())
+            await panel.reloadList()
+        }
+    }
+
+    private func commit(_ row: ListRow, _ intent: CommitIntent) {
+        var options: PasteOptions = []
+        // ⇧ (plain) and ⌥ (raw) read live — they don't block the Enter handler.
+        // ⌘ is deliberately NOT read here: it's the routing key for ⌘Enter /
+        // ⌘1-9, so reading it would mislabel a quick-paste as copy-only.
+        let mods = NSEvent.modifierFlags
+        if mods.contains(.shift) { options.insert(.plainText) }
+        if mods.contains(.option) { options.insert(.forceRaw) }
+        if intent == .copyOnly { options.insert(.copyOnly) }
+        let engine = pasteEngine!, panel = panel!, now = nowMillis()
+        panel.orderOut(nil)                                       // close first so ⌘V targets the prior app
+        Task { @MainActor in await engine.paste(row: row, options: options, nowMillis: now) }
+    }
+
+    private func deleteItem(_ row: ListRow) {
+        let store = store!, panel = panel!
+        Task { @MainActor in
+            try? await store.softDelete(id: row.id, nowMillis: nowMillis())
+            await panel.reloadList()                              // refresh in place, keep palette open
         }
     }
 }

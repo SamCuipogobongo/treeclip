@@ -5,24 +5,37 @@ import TreeCore
 /// The palette surface: a search field over a keyboard-navigable history list.
 /// Rows render from `ListRow` (metadata + thumbnail) only — never the payload,
 /// preserving the projection discipline all the way to the pixels.
+/// How a committed row should be pasted. The UI stays free of TreeCapture's
+/// PasteOptions; the app maps this intent (plus held ⇧/⌥, read at commit time)
+/// onto them. Only the ⌘-routed intents need to be explicit here — ⇧ (plain)
+/// and ⌥ (raw) are read from the live modifier flags, since those don't block
+/// the plain Enter handler the way ⌘ does.
+public enum CommitIntent: Sendable {
+    case paste          // Enter / ⌘1-9 / click — normal auto-paste
+    case copyOnly       // ⌘Enter — clipboard only, no ⌘V
+}
+
 public struct PaletteView: View {
     @Bindable var model: PaletteViewModel
-    /// Called when the user commits a row (Enter / click). The host performs the
-    /// actual restore/paste (M5) and closes the panel.
-    var onCommit: (ListRow) -> Void
+    /// Called when the user commits a row (Enter / click / ⌘1-9). The host
+    /// performs the actual restore/paste and closes the panel.
+    var onCommit: (ListRow, CommitIntent) -> Void
     var onEscape: () -> Void
     var onPromote: (ListRow) -> Void
+    var onDelete: (ListRow) -> Void
 
     @FocusState private var searchFocused: Bool
 
     public init(model: PaletteViewModel,
-                onCommit: @escaping (ListRow) -> Void,
+                onCommit: @escaping (ListRow, CommitIntent) -> Void,
                 onEscape: @escaping () -> Void,
-                onPromote: @escaping (ListRow) -> Void = { _ in }) {
+                onPromote: @escaping (ListRow) -> Void = { _ in },
+                onDelete: @escaping (ListRow) -> Void = { _ in }) {
         self.model = model
         self.onCommit = onCommit
         self.onEscape = onEscape
         self.onPromote = onPromote
+        self.onDelete = onDelete
     }
 
     public var body: some View {
@@ -46,21 +59,32 @@ public struct PaletteView: View {
             .onKeyPress(.downArrow) { model.moveDown(); return .handled }
             .onKeyPress(.upArrow) { model.moveUp(); return .handled }
             .onKeyPress(.return) {
-                if let row = model.selectedRow { onCommit(row) }
+                if let row = model.selectedRow { onCommit(row, .paste) }
                 return .handled
             }
             .onKeyPress(.escape) { onEscape(); return .handled }
-            .background(promoteShortcut)                      // ⌘N: promote selection to a note
+            .background(shortcutButtons)
     }
 
-    // A hidden ⌘N shortcut. Command-modified shortcuts fire even while the
-    // search field is focused, and don't interfere with typing a plain "n".
-    private var promoteShortcut: some View {
-        Button("") { if let row = model.selectedRow { onPromote(row) } }
-            .keyboardShortcut("n", modifiers: .command)
-            .opacity(0)
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+    // Hidden command-modified shortcuts. They fire even while the search field
+    // is focused and never interfere with typing, so quick-paste/delete/plain
+    // don't collide with plain number/backspace keys.
+    private var shortcutButtons: some View {
+        ZStack {
+            Button("") { if let r = model.selectedRow { onPromote(r) } }
+                .keyboardShortcut("n", modifiers: .command)           // ⌘N promote to note
+            Button("") { if let r = model.selectedRow { onCommit(r, .copyOnly) } }
+                .keyboardShortcut(.return, modifiers: .command)       // ⌘Enter copy only
+            Button("") { if let r = model.selectedRow { onDelete(r) } }
+                .keyboardShortcut(.delete, modifiers: .command)       // ⌘⌫ delete item
+            ForEach(1...9, id: \.self) { n in                          // ⌘1-9 quick paste
+                Button("") {
+                    if model.rows.indices.contains(n - 1) { onCommit(model.rows[n - 1], .paste) }
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(n)")), modifiers: .command)
+            }
+        }
+        .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
     }
 
     private var list: some View {
@@ -71,7 +95,7 @@ public struct PaletteView: View {
                         PaletteRowView(row: row, selected: index == model.selectedIndex)
                             .id(row.id)
                             .contentShape(Rectangle())
-                            .onTapGesture { model.select(index); onCommit(row) }
+                            .onTapGesture { model.select(index); onCommit(row, .paste) }
                     }
                 }
             }

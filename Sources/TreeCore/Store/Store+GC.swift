@@ -11,6 +11,20 @@ extension Store {
         }
     }
 
+    /// Clear history in one shot. `keepPinned: true` is the everyday "Clear"
+    /// (pins survive); `false` is "Clear All". Tombstones only — GC reclaims the
+    /// files/rows at idle. Returns the number of items cleared.
+    @discardableResult
+    public func clear(keepPinned: Bool, nowMillis: Int64) throws -> Int {
+        try pool.write { db in
+            let sql = keepPinned
+                ? "UPDATE item SET deletedAt = ?, updatedAt = ? WHERE deletedAt IS NULL AND pinned = 0"
+                : "UPDATE item SET deletedAt = ?, updatedAt = ? WHERE deletedAt IS NULL"
+            try db.execute(sql: sql, arguments: [nowMillis, nowMillis])
+            return db.changesCount
+        }
+    }
+
     /// Apply the age-based expiry axis (call periodically, e.g. daily).
     public func enforceExpiry(nowMillis: Int64) throws {
         guard let maxAgeDays = config.maxAgeDays else { return }

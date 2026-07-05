@@ -8,8 +8,9 @@ import TreeCore
 /// you were in, not the panel.
 public final class PalettePanel: NSPanel {
     private let model: PaletteViewModel
-    public var onCommit: ((ListRow) -> Void)?
+    public var onCommit: ((ListRow, CommitIntent) -> Void)?
     public var onPromote: ((ListRow) -> Void)?
+    public var onDelete: ((ListRow) -> Void)?
 
     public init(model: PaletteViewModel) {
         self.model = model
@@ -31,9 +32,10 @@ public final class PalettePanel: NSPanel {
 
         let root = PaletteView(
             model: model,
-            onCommit: { [weak self] row in self?.onCommit?(row) },
+            onCommit: { [weak self] row, intent in self?.onCommit?(row, intent) },
             onEscape: { [weak self] in self?.orderOut(nil) },
-            onPromote: { [weak self] row in self?.orderOut(nil); self?.onPromote?(row) }
+            onPromote: { [weak self] row in self?.orderOut(nil); self?.onPromote?(row) },
+            onDelete: { [weak self] row in self?.onDelete?(row) }
         )
         contentView = NSHostingView(rootView: root)
     }
@@ -48,6 +50,10 @@ public final class PalettePanel: NSPanel {
     public func toggle() {
         if isVisible { orderOut(nil) } else { Task { await present() } }
     }
+
+    /// Refresh the list in place (e.g. after deleting an item) without moving
+    /// or re-keying the panel.
+    public func reloadList() async { await model.reload() }
 
     private func centerOnActiveScreen() {
         guard let screen = NSScreen.main else { center(); return }
