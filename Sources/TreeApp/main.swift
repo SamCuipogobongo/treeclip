@@ -28,7 +28,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
 
         let ownership = PasteboardOwnership()
-        driver = CaptureDriver(store: store, ownership: ownership)
+        // Inject Vision OCR here (the only Vision link point) so captured images
+        // become text-searchable without TreeCore ever linking Vision.
+        let coordinator = CaptureCoordinator(
+            imageProcessor: ImageProcessor(recognizer: VisionOCR.recognize)
+        )
+        driver = CaptureDriver(store: store, coordinator: coordinator, ownership: ownership)
         driver.start()
 
         let handoffDir = FileManager.default

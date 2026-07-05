@@ -14,10 +14,18 @@ public struct ProcessedImage: Sendable {
     public var thumbH: Int
     public var sourceW: Int
     public var sourceH: Int
+    public var ocrText: String?            // injected recognizer's output, if any
 }
 
+/// Injected text recognizer over raw image bytes. TreeCore never imports Vision
+/// (linking it hangs the test binary at dyld load on headless CI, 2026-07-05);
+/// the app supplies a Vision-backed implementation, so only the untested
+/// executable ever loads Vision.
+public typealias TextRecognizer = @Sendable (Data) -> String?
+
 public struct ImageProcessor: Sendable {
-    public init() {}
+    private let recognizer: TextRecognizer?
+    public init(recognizer: TextRecognizer? = nil) { self.recognizer = recognizer }
 
     /// Decode arbitrary image bytes, re-encode a single canonical PNG (dropping
     /// the multi-format bloat Maccy kept), and generate a downsampled thumbnail
@@ -40,12 +48,10 @@ public struct ImageProcessor: Sendable {
         return ProcessedImage(
             uti: "public.png", canonicalBytes: canonical,
             thumbnailBytes: thumbBytes, thumbW: thumbCG.width, thumbH: thumbCG.height,
-            sourceW: full.width, sourceH: full.height
+            sourceW: full.width, sourceH: full.height,
+            ocrText: recognizer?(imageData)     // searchable screenshots (app injects Vision)
         )
     }
-    // OCR (Vision) deferred: importing Vision hangs the test binary at dyld load
-    // on headless CI runners (verified 2026-07-05). Revisit with lazy dlopen so
-    // the framework loads only when OCR actually runs (app-side, never on CI).
 
     static func encodePNG(_ image: CGImage) -> Data? {
         let data = NSMutableData()
