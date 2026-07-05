@@ -58,7 +58,7 @@ public struct CaptureCoordinator: Sendable {
                 sourceApp: snapshot.sourceApp,
                 representations: [Representation(uti: img.uti, bytes: img.canonicalBytes, isImage: true)],
                 thumbnail: (data: img.thumbnailBytes, w: img.thumbW, h: img.thumbH),
-                ocrText: nil
+                ocrText: img.ocrText
             )
         }
 

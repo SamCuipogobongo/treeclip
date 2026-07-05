@@ -2,6 +2,7 @@ import Foundation
 import ImageIO
 import CoreGraphics
 import UniformTypeIdentifiers
+import Vision
 
 /// Result of normalizing a captured image: one canonical PNG for the payload,
 /// plus a pre-generated thumbnail (design §3.5). No AppKit — ImageIO/CoreGraphics
@@ -14,6 +15,7 @@ public struct ProcessedImage: Sendable {
     public var thumbH: Int
     public var sourceW: Int
     public var sourceH: Int
+    public var ocrText: String?            // recognized text → FTS (searchable images)
 }
 
 public struct ImageProcessor: Sendable {
@@ -40,8 +42,21 @@ public struct ImageProcessor: Sendable {
         return ProcessedImage(
             uti: "public.png", canonicalBytes: canonical,
             thumbnailBytes: thumbBytes, thumbW: thumbCG.width, thumbH: thumbCG.height,
-            sourceW: full.width, sourceH: full.height
+            sourceW: full.width, sourceH: full.height,
+            ocrText: Self.recognizeText(full)
         )
+    }
+
+    /// Run text recognition so screenshots become searchable (roadmap Wave 2).
+    /// Vision is headless-safe; `.fast` keeps the capture path responsive.
+    static func recognizeText(_ image: CGImage) -> String? {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        try? handler.perform([request])
+        let lines = request.results?.compactMap { $0.topCandidates(1).first?.string } ?? []
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     static func encodePNG(_ image: CGImage) -> Data? {
