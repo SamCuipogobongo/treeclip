@@ -10,6 +10,7 @@ jobs:
   build-test:
     name: build & test
     runs-on: macos-15
+    timeout-minutes: 10          # fail fast instead of hanging on a stuck test
     steps:
       - uses: actions/checkout@v4
 
