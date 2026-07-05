@@ -19,10 +19,15 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var pasteEngine: PasteEngine!
     private var notes: NotesController!
     private var paletteModel: PaletteViewModel!
+    private let settingsStore = SettingsStore()
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let settings = settingsStore.load()
+        LaunchAtLogin.apply(settings.launchAtLogin)
+
         do {
-            store = try Store(location: try .standard())
+            store = try Store(location: try .standard(), config: settings.storeConfig)
         } catch {
             NSApp.presentError(error); NSApp.terminate(nil); return
         }
@@ -31,9 +36,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         // Inject Vision OCR here (the only Vision link point) so captured images
         // become text-searchable without TreeCore ever linking Vision.
         let coordinator = CaptureCoordinator(
+            filterConfig: settings.filterConfig,
             imageProcessor: ImageProcessor(recognizer: VisionOCR.recognize)
         )
-        driver = CaptureDriver(store: store, coordinator: coordinator, ownership: ownership)
+        driver = CaptureDriver(store: store, coordinator: coordinator,
+                               ownership: ownership, interval: settings.checkInterval)
         driver.start()
 
         let handoffDir = FileManager.default
@@ -42,7 +49,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         pasteEngine = PasteEngine(
             store: store,
             handoff: HandoffStore(directory: handoffDir),
-            ownership: ownership
+            ownership: ownership,
+            config: settings.agentRouteConfig
         )
 
         notes = NotesController(store: store, pasteEngine: pasteEngine)
@@ -81,6 +89,30 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePalette() { panel.toggle() }
+
+    @objc private func openSettings() {
+        let view = SettingsView(initial: settingsStore.load()) { [weak self] new in
+            self?.saveSettings(new)
+        }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.title = "Tree Settings"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        settingsWindow = window
+        NSApp.activate(ignoringOtherApps: true)          // accessory app must foreground to show a window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func saveSettings(_ new: AppSettings) {
+        let old = settingsStore.load()
+        settingsStore.save(new)
+        if new.launchAtLogin != old.launchAtLogin { LaunchAtLogin.apply(new.launchAtLogin) }
+        settingsWindow?.close()
+        // Other config (cap, filters, interval, terminal list) is read at launch;
+        // it takes effect on next start — communicated in the form's footer.
+    }
+
     @objc private func clearHistory() { performClear(keepPinned: true) }
     @objc private func clearAll() { performClear(keepPinned: false) }
     @objc private func quit() { NSApp.terminate(nil) }
@@ -90,6 +122,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         let open = NSMenuItem(title: "Open Tree", action: #selector(togglePalette), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         menu.addItem(.separator())
         let clear = NSMenuItem(title: "Clear History (keep pinned)", action: #selector(clearHistory), keyEquivalent: "")
         clear.target = self
